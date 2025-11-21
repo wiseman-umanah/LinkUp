@@ -18,7 +18,7 @@ function requireOperator(): Client | null {
   }
   if (cachedClient) return cachedClient;
   cachedClient = createClientForNetwork(env.HEDERA_NETWORK);
-  const operatorKey = parseOperatorKey(env.HEDERA_OPERATOR_KEY, env.HEDERA_KEY_TYPE);
+  const operatorKey = parsePrivateKey(env.HEDERA_OPERATOR_KEY, env.HEDERA_KEY_TYPE);
   cachedClient.setOperator(AccountId.fromString(env.HEDERA_OPERATOR_ID), operatorKey);
   return cachedClient;
 }
@@ -67,7 +67,7 @@ export async function createCustodialWallet(): Promise<WalletRecord> {
   };
 }
 
-function createClientForNetwork(network: string): Client {
+export function createClientForNetwork(network: string): Client {
   switch (network) {
     case "mainnet":
       return Client.forMainnet();
@@ -78,14 +78,21 @@ function createClientForNetwork(network: string): Client {
   }
 }
 
-function parseOperatorKey(key: string, keyType: string): PrivateKey {
+export function buildClientForWallet(accountId: string, privateKeyRaw: string) {
+  const client = createClientForNetwork(env.HEDERA_NETWORK);
+  const key = parsePrivateKey(privateKeyRaw, env.HEDERA_KEY_TYPE);
+  client.setOperator(AccountId.fromString(accountId), key);
+  return client;
+}
+
+function parsePrivateKey(key: string, keyType: string): PrivateKey {
   try {
     if (keyType === "ECDSA") {
       return PrivateKey.fromStringECDSA(key);
     }
     return PrivateKey.fromString(key);
   } catch (err) {
-    logger.error("Failed to parse Hedera operator key", err);
+    logger.error("Failed to parse Hedera private key", err);
     throw err;
   }
 }

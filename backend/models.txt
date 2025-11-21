@@ -17,9 +17,9 @@ Payment:
 	description: string?
 	custom success message: string? || Thank You for your purchase!
 	redirect url: string?
-	priceFlow: number
+	priceHbar: number
 	priceUSD: number
-	totalFlow: number
+	totalHbar: number
 	paymentLink: string
 	createdAt: Date
 	SellerId: string

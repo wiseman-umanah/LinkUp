@@ -42,6 +42,8 @@ Create `backend/.env` with the following keys (all strings unless noted):
 | `HEDERA_OPERATOR_ID` | Operator account ID (numeric format e.g. `0.0.1234`) |
 | `HEDERA_OPERATOR_KEY` | Operator private key (DER string – typically `302e...`) |
 | `HEDERA_INITIAL_BALANCE_HBAR` | Initial balance for merchant accounts (number, default `1`) |
+| `HEDERA_LINKUP_CONTRACT_ID` | Deployed LinkUp contract ID (e.g., `0.0.123456`) |
+| `PLATFORM_FEE_BPS` | Platform fee in basis points for payment links (default `200`, i.e. 2%) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | SMTP settings (optional; when omitted OTP codes are logged to the console) |
 
 Optional future integrations (Cloudinary, Pinata, etc.) can add their own env keys; the config module (`src/config/env.ts`) will validate everything required at boot.
@@ -81,6 +83,7 @@ backend/
 ```
 
 ## Key routes
+### Auth
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/auth/signup` | Start onboarding, create Hedera wallet, send OTP |
@@ -92,7 +95,22 @@ backend/
 | `POST` | `/auth/password/reset` | Validate OTP, set new password, issue tokens |
 | `POST` | `/auth/refresh` | Rotate tokens with a refresh token |
 | `POST` | `/auth/logout` | Revoke a refresh token |
+
+### Payments & Transactions
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/payments` | List the authenticated seller’s payment links |
+| `POST` | `/payments` | Create a payment link (name, slug, price, custom message, base64 image) |
+| `DELETE` | `/payments/:id` | Deactivate a payment link (store optional blockchain tx id) |
+| `GET` | `/public/payments/:slug` | Public lookup for checkout pages |
+| `POST` | `/public/payments/:id/transactions` | Record a payment transaction (used by the checkout) |
+| `GET` | `/transactions` | List recorded transactions for the seller |
 | `GET` | `/health` | Basic status endpoint |
+
+### Wallet
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/wallet/import` | Replace the custodial wallet by importing a mnemonic + account ID |
 
 Authenticated routes require `Authorization: Bearer <accessToken>`. Refresh/Logout take the refresh token in the JSON body.
 

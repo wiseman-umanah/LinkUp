@@ -1,0 +1,33 @@
+models
+
+Seller: 
+    id: string
+	Name: string
+    Address: string
+    business name: string
+	email address: string
+	country: Nigeria
+	joinedAt: Date
+	
+
+Payment:
+	id: string
+	name: string
+	image: string?
+	description: string?
+	custom success message: string? || Thank You for your purchase!
+	redirect url: string?
+	priceFlow: number
+	priceUSD: number
+	totalFlow: number
+	paymentLink: string
+	createdAt: Date
+	SellerId: string
+	
+Transaction:
+	id: string
+	paymentId: string
+	txId: string
+	createdAt: Date
+	SellerId: string
+	

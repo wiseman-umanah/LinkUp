@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { PiMagnifyingGlassDuotone, PiLinkDuotone, PiTrashDuotone, PiPlusCircleDuotone } from "react-icons/pi";
 import PaymentLinkModal from "./PaymentLinkModal";
+import QrShareModal from "./QrShareModal";
 import type { PaymentRecord } from "../api/payments";
 
 type PaymentProps = {
@@ -32,6 +33,8 @@ export function Payment({
 }: PaymentProps) {
   const [search, setSearch] = useState("");
   const [isModalOpen, setModalOpen] = useState(false);
+  const [qrLink, setQrLink] = useState<string | null>(null);
+  const [qrTitle, setQrTitle] = useState<string>("Share link");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   const filteredLinks = useMemo(() => {
@@ -147,7 +150,15 @@ export function Payment({
                             <button
                               type="button"
                               className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-indigo-200 transition hover:border-indigo-400/40 hover:bg-indigo-500/10"
-                              onClick={() => window.open(`/payment/${link.paymentLink}`, "_blank", "noreferrer")}
+                              onClick={() => {
+                                const origin =
+                                  typeof window !== "undefined"
+                                    ? window.location.origin
+                                    : import.meta.env.VITE_APP_URL ?? "";
+                                const paymentUrl = `${origin.replace(/\/$/, "")}/payment/${link.paymentLink}`;
+                                setQrTitle(link.name ?? "Payment link");
+                                setQrLink(paymentUrl);
+                              }}
                             >
                               <PiLinkDuotone className="h-4 w-4" /> Preview
                             </button>
@@ -191,6 +202,14 @@ export function Payment({
           await onCreatePayment(payload);
           setModalOpen(false);
         }}
+      />
+      <QrShareModal
+        isOpen={Boolean(qrLink)}
+        value={qrLink ?? ""}
+        title={qrTitle}
+        subtitle="Share this payment link with your buyer or download the QR code."
+        onClose={() => setQrLink(null)}
+        ctaLabel="View checkout"
       />
     </div>
   );

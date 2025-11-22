@@ -25,6 +25,7 @@ const MAX_SUCCESS_MESSAGE_LENGTH = 50;
 const MAX_NAME_LENGTH = 50;
 const MIN_SLUG_LENGTH = 5;
 const MAX_SLUG_LENGTH = 20;
+const AMOUNT_INPUT_PATTERN = /^\d*(?:\.\d*)?$/;
 const BASE_PAYMENT_PATH = typeof window !== "undefined" ? `${window.location.origin}/payment/` : "/payment/";
 const INITIAL_CROP: PercentCrop = {
   unit: "%",
@@ -56,7 +57,7 @@ const PaymentLinkModal: React.FC<PaymentLinkModalProps> = ({ isOpen, onClose, on
   const [productNameError, setProductNameError] = useState<string | null>(null);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
   const [successMessageError, setSuccessMessageError] = useState<string | null>(null);
-  const [amountHbar, setAmountHbar] = useState(1);
+  const [amountHbar, setAmountHbar] = useState("1");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -74,7 +75,7 @@ const PaymentLinkModal: React.FC<PaymentLinkModalProps> = ({ isOpen, onClose, on
       setImageFile(null);
       setImagePreviewUrl(null);
       setSuccessMessage("Thank you");
-      setAmountHbar(1);
+    setAmountHbar("1");
       const initialSlug = generateSlugValue(MAX_SLUG_LENGTH);
       setSlug(initialSlug);
       setSlugError(validateSlug(initialSlug, MIN_SLUG_LENGTH, MAX_SLUG_LENGTH));
@@ -264,6 +265,12 @@ const PaymentLinkModal: React.FC<PaymentLinkModalProps> = ({ isOpen, onClose, on
     }
   };
 
+  const handleAmountChange = (nextValue: string) => {
+    if (nextValue === "" || AMOUNT_INPUT_PATTERN.test(nextValue)) {
+      setAmountHbar(nextValue);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const sanitizedSlug = sanitizeSlug(slug, MAX_SLUG_LENGTH);
@@ -275,7 +282,8 @@ const PaymentLinkModal: React.FC<PaymentLinkModalProps> = ({ isOpen, onClose, on
       setSlugError(slugValidationError);
       return;
     }
-    if (!Number.isFinite(amountHbar) || amountHbar <= 0) {
+    const parsedAmount = Number(amountHbar);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setSubmitError("Amount in HBAR must be greater than zero");
       return;
     }
@@ -294,7 +302,7 @@ const PaymentLinkModal: React.FC<PaymentLinkModalProps> = ({ isOpen, onClose, on
       await onCreate({
         name: productName,
         description,
-        amountHbar,
+        amountHbar: parsedAmount,
         successMessage,
         redirectUrl: redirectLink || undefined,
         slug: sanitizedSlug,
@@ -483,13 +491,12 @@ const PaymentLinkModal: React.FC<PaymentLinkModalProps> = ({ isOpen, onClose, on
               <label className="block text-sm font-medium text-slate-200">Amount (HBAR)</label>
             </div>
             <input
-              type="number"
-              min={0.0001}
-              step={0.01}
+              type="text"
+              inputMode="decimal"
               required
               placeholder="Enter amount in HBAR"
               value={amountHbar}
-              onChange={(e) => setAmountHbar(Number(e.target.value))}
+              onChange={(e) => handleAmountChange(e.target.value)}
               className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-indigo-400/60 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
             />
           </div>

@@ -1,7 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { fetchPublicPayment, type PaymentRecord } from "../api/payments";
+import {
+  fetchPublicPayment,
+  recordPaymentTransaction,
+  type PaymentRecord,
+} from "../api/payments";
 import { Seo } from "../components/Seo";
+import QrShareModal from "../components/QrShareModal";
+import { useHashConnect } from "../hooks/useHashConnect";
+import {
+  AccountId,
+  ContractExecuteTransaction,
+  ContractFunctionParameters,
+  ContractId,
+  Hbar,
+  TransactionId,
+} from "@hashgraph/sdk";
 
 type PaymentItem = {
   recordId: string;
@@ -17,6 +31,41 @@ type PaymentItem = {
   priceUsd?: number | null;
 };
 
+const HEDERA_NETWORK = (import.meta.env.VITE_HEDERA_NETWORK ?? "testnet").toLowerCase();
+const HASHSCAN_BASE =
+  HEDERA_NETWORK === "mainnet"
+    ? "https://hashscan.io/mainnet/transaction/"
+    : HEDERA_NETWORK === "previewnet"
+      ? "https://hashscan.io/previewnet/transaction/"
+      : "https://hashscan.io/testnet/transaction/";
+const CONTRACT_ID_ENV = import.meta.env.VITE_LINKUP_CONTRACT_ID;
+const CONTRACT_SOLIDITY_ADDRESS = import.meta.env.VITE_LINKUP_CONTRACT_ADDRESS;
+const DEFAULT_NODE_ACCOUNTS: Record<string, string[]> = {
+  mainnet: ["0.0.3", "0.0.4", "0.0.5", "0.0.6"],
+  testnet: ["0.0.3", "0.0.4", "0.0.5", "0.0.6"],
+  previewnet: ["0.0.3", "0.0.4", "0.0.5"],
+  devnet: ["0.0.3"],
+};
+
+function resolveContractId(): ContractId | null {
+  if (CONTRACT_ID_ENV) {
+    try {
+      return ContractId.fromString(CONTRACT_ID_ENV);
+    } catch (err) {
+      console.warn("Invalid contract ID string", err);
+    }
+  }
+  if (CONTRACT_SOLIDITY_ADDRESS) {
+    try {
+      const normalized = CONTRACT_SOLIDITY_ADDRESS.replace(/^0x/, "");
+      return ContractId.fromSolidityAddress(normalized);
+    } catch (err) {
+      console.warn("Invalid contract solidity address", err);
+    }
+  }
+  return null;
+}
+
 export default function PublicPaymentPage() {
   const [item, setItem] = useState<PaymentItem | null>(null);
   const [imageVisible, setImageVisible] = useState(true);
@@ -26,9 +75,22 @@ export default function PublicPaymentPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "success" | "error">("idle");
   const { slug } = useParams<{ slug: string }>();
+  const contractId = useMemo(() => resolveContractId(), []);
 
-  const [walletConnected, setWalletConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const {
+    accountId: buyerAccountId,
+    pairingUri,
+    status: walletStatus,
+    connect,
+    connectWithQr,
+    clearPairingUri,
+    disconnect,
+    submitTransaction,
+  } = useHashConnect();
+  const walletConnected = Boolean(buyerAccountId);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [pairingModalOpen, setPairingModalOpen] = useState(false);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadPayment() {
@@ -51,16 +113,6 @@ export default function PublicPaymentPage() {
 
     loadPayment();
   }, [slug]);
-
-  useEffect(() => {
-    if (status === "success" && item?.redirectUrl) {
-      const timeout = window.setTimeout(() => {
-        window.location.href = item.redirectUrl as string;
-      }, 4000);
-      return () => window.clearTimeout(timeout);
-    }
-    return undefined;
-  }, [status, item?.redirectUrl]);
 
   const { feeHbar, totalHbar } = useMemo(() => {
     if (!item) return { feeHbar: 0, totalHbar: 0 };
@@ -106,34 +158,69 @@ export default function PublicPaymentPage() {
     };
   }, [item, appUrl, slug, totalHbar]);
 
-  const connectWallet = () => {
-    setWalletConnected(true);
-    const fakeAddress = `0x${Math.random().toString(16).slice(2, 10)}${Math.random().toString(16).slice(2, 6)}`;
-    setWalletAddress(fakeAddress);
+  const handleConnect = async () => {
+    if (walletConnected) {
+      disconnect();
+    } else {
+      await connect();
+    }
   };
 
-  const disconnectWallet = () => {
-    setWalletConnected(false);
-    setWalletAddress(null);
+  const handlePairViaQr = async () => {
+    if (walletConnected || walletStatus === "connecting") return;
+    setPairingModalOpen(true);
+    try {
+      await connectWithQr();
+    } catch (err) {
+      console.error("QR pairing failed or was cancelled", err);
+      setPairingModalOpen(false);
+      clearPairingUri();
+    }
   };
+
+  useEffect(() => {
+    if (!pairingUri) {
+      setPairingModalOpen(false);
+    }
+  }, [pairingUri]);
 
   const handlePay = async () => {
-    if (!walletConnected) {
-      setError("Connect a wallet before paying.");
+    if (!item) return;
+    if (!contractId) {
+      setError("Payment contract is not configured.");
       return;
     }
-    if (!item) return;
+    if (!buyerAccountId) {
+      setError("Connect a Hedera wallet before paying.");
+      return;
+    }
     setLoadingPay(true);
     setStatus("processing");
     setError(null);
     try {
+      const payload = serializePaymentTransaction(contractId, item, buyerAccountId);
+      const response = await submitTransaction(payload, buyerAccountId);
+      const txId = extractTransactionId(response);
+      setTransactionId(txId);
       setSuccessMessage(item.successMessage ?? "Thank you for your purchase!");
       setStatus("success");
-    } catch (e) {
+      try {
+        await recordPaymentTransaction(item.recordId, txId, "payment", buyerAccountId);
+      } catch (err) {
+        console.warn("Failed to record on backend", err);
+      }
+    } catch (e: any) {
+      console.error("Payment failed", e);
       setStatus("error");
-      setError("Payment failed. Please try again.");
+      setError(e?.message ?? "Payment failed. Please try again.");
     } finally {
       setLoadingPay(false);
+    }
+  };
+
+  const handleRedirect = () => {
+    if (item?.redirectUrl) {
+      window.location.href = item.redirectUrl;
     }
   };
 
@@ -202,28 +289,48 @@ export default function PublicPaymentPage() {
         <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-16">
           <div className="w-full max-w-4xl rounded-[40px] border border-white/10 bg-white/5 p-8 shadow-[0_50px_120px_-50px_rgba(18,49,220,0.5)] backdrop-blur-xl sm:p-12">
             <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 pb-6">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-[#9ea6ff]/80">LinkUp Checkout</p>
-              <h1 className="text-2xl font-semibold text-white">Secure Hedera payment</h1>
-            </div>
-
-            {walletConnected && walletAddress ? (
-              <button
-                className="flex items-center gap-2 rounded-full border border-[#6f7bff]/50 bg-[#2d2fa8]/20 px-4 py-2 text-xs font-semibold text-[#d7dbff]"
-                onClick={disconnectWallet}
-              >
-                <span className="h-2 w-2 rounded-full bg-[#6f7bff]" />
-                {walletAddress}
-              </button>
-            ) : (
-              <button
-                className="hedera-gradient px-4 py-2 text-xs font-semibold text-white rounded-full shadow-lg transition hover:brightness-110"
-                onClick={connectWallet}
-              >
-                Connect wallet
-              </button>
-            )}
-          </header>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-[#9ea6ff]/80">LinkUp Checkout</p>
+                <h1 className="text-2xl font-semibold text-white">Secure Hedera payment</h1>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-indigo-400/40 hover:text-white"
+                  onClick={() => setShareOpen(true)}
+                >
+                  Share
+                </button>
+                {walletConnected && buyerAccountId ? (
+                  <button
+                    className="flex items-center gap-2 rounded-full border border-[#6f7bff]/50 bg-[#2d2fa8]/20 px-4 py-2 text-xs font-semibold text-[#d7dbff]"
+                    onClick={handleConnect}
+                    disabled={walletStatus === "connecting"}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-[#6f7bff]" />
+                    {buyerAccountId}
+                  </button>
+                ) : (
+                  <button
+                    className="hedera-gradient rounded-full px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:brightness-110"
+                    onClick={handleConnect}
+                    disabled={walletStatus === "connecting"}
+                  >
+                    {walletStatus === "connecting" ? "Connecting…" : "Connect wallet"}
+                  </button>
+                )}
+                {!walletConnected ? (
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/10 px-4 py-2 text-xs font-semibold text-indigo-200 transition hover:border-indigo-400/40 hover:text-white"
+                    onClick={handlePairViaQr}
+                    disabled={walletStatus === "connecting"}
+                  >
+                    {walletStatus === "connecting" ? "Waiting…" : "Pair via QR"}
+                  </button>
+                ) : null}
+              </div>
+            </header>
 
           <main className="mt-8">
             <div className="flex flex-col gap-10 lg:flex-row">
@@ -303,7 +410,23 @@ export default function PublicPaymentPage() {
                       </div>
                       <p className="text-sm font-medium text-[#d7dbff]">{successMessage}</p>
                       {item.redirectUrl ? (
-                        <p className="mt-2 text-xs text-[#b5bffe]">Redirecting you shortly…</p>
+                        <button
+                          type="button"
+                          onClick={handleRedirect}
+                          className="mt-4 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:border-white/40 hover:bg-white/20"
+                        >
+                          Continue
+                        </button>
+                      ) : null}
+                      {transactionId ? (
+                        <a
+                          href={`${HASHSCAN_BASE}${transactionId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex items-center justify-center rounded-full border border-white/10 px-4 py-2 text-xs font-semibold text-indigo-100 transition hover:border-white/30 hover:text-white"
+                        >
+                          View on HashScan
+                        </a>
                       ) : null}
                     </div>
                   ) : null}
@@ -317,6 +440,25 @@ export default function PublicPaymentPage() {
           </main>
         </div>
         </div>
+        <QrShareModal
+          isOpen={shareOpen}
+          value={canonicalUrl}
+          title="Share this checkout link"
+          subtitle="Send this QR code to your buyer to open the LinkUp payment page."
+          onClose={() => setShareOpen(false)}
+          ctaLabel="Open checkout"
+        />
+        <QrShareModal
+          isOpen={pairingModalOpen}
+          value={pairingUri ?? ""}
+          title="Pair your wallet"
+          subtitle="Scan this QR with HashPack, Blade, or any Hedera WalletConnect app to link your wallet."
+          onClose={() => {
+            setPairingModalOpen(false);
+            clearPairingUri();
+          }}
+          ctaLabel="Open HashPack"
+        />
       </div>
     </>
   );
@@ -335,15 +477,78 @@ function round4(n: number) {
   return Math.round(n * 10000) / 10000;
 }
 
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b);
+  });
+  if (typeof window !== "undefined" && typeof window.btoa === "function") {
+    return window.btoa(binary);
+  }
+  if (typeof globalThis !== "undefined" && typeof (globalThis as any).Buffer !== "undefined") {
+    return (globalThis as any).Buffer.from(bytes).toString("base64");
+  }
+  throw new Error("Base64 encoding is not supported in this environment.");
+}
+
+function serializePaymentTransaction(contractId: ContractId, item: PaymentItem, payerAccount: string) {
+  const payer = AccountId.fromString(payerAccount);
+  const nodeIds =
+    (DEFAULT_NODE_ACCOUNTS[HEDERA_NETWORK] ?? DEFAULT_NODE_ACCOUNTS.testnet).map((id) =>
+      AccountId.fromString(id)
+    );
+  const metadataUri = item.imageUrl ?? "";
+  const tx = new ContractExecuteTransaction()
+    .setContractId(contractId)
+    .setGas(350000)
+    .setFunction("pay", new ContractFunctionParameters().addString(item.id).addString(metadataUri))
+    .setPayableAmount(new Hbar(item.totalHbar))
+    .setTransactionId(TransactionId.generate(payer))
+    .setNodeAccountIds(nodeIds);
+  tx.freeze();
+  return bytesToBase64(tx.toBytes());
+}
+
+function extractTransactionId(response: any): string {
+  if (response?.error) {
+    const message =
+      response.error.message ?? response.error.data ?? "Wallet reported an error while signing.";
+    throw new Error(message);
+  }
+
+  const txResult = response?.result ?? response;
+  if (!txResult) {
+    throw new Error("Wallet did not return a transaction result.");
+  }
+
+  const txId =
+    txResult.transactionId ??
+    txResult.transactionIdString ??
+    txResult.transactionIdStr ??
+    txResult.transaction_id ??
+    null;
+  if (!txId) {
+    throw new Error("Wallet did not return a transaction ID.");
+  }
+
+  const status: string | undefined =
+    txResult.status ?? txResult.receipt?.status ?? txResult.receipt?.status?.name;
+  if (typeof status === "string" && status.toUpperCase() !== "SUCCESS") {
+    throw new Error(`Transaction failed with status ${status}`);
+  }
+
+  return String(txId);
+}
+
 function mapPayment(payment: PaymentRecord): PaymentItem {
   return {
     recordId: payment.id,
     id: payment.paymentLink,
     name: payment.name,
     description: payment.description ?? undefined,
-  amountHbar: payment.priceHbar,
-  feeHbar: payment.feeHbar ?? 0,
-  totalHbar: payment.totalHbar ?? payment.priceHbar + (payment.feeHbar ?? 0),
+    amountHbar: payment.priceHbar,
+    feeHbar: payment.feeHbar ?? 0,
+    totalHbar: payment.totalHbar ?? payment.priceHbar + (payment.feeHbar ?? 0),
     imageUrl: payment.image,
     successMessage: payment.customSuccessMessage,
     redirectUrl: payment.redirectUrl,

@@ -1,26 +1,21 @@
-## WalPay Cadence package
+## LinkUp Hardhat Package
 
-This folder contains the `WalPay` Cadence contract and supporting transactions/scripts used by the frontend and backend to create, pay, and deactivate payment links on the Flow blockchain.
+This folder contains the Solidity LinkUp contract used on Hedera along with Hardhat scripts. (Legacy Flow Cadence files are preserved for reference.)
 
 ## Project structure
 ```
-smart_contract/
-├── cadence/
-│   ├── contracts/WalPay.cdc            # Main contract (fee logic + earnings tracking)
-│   ├── scripts/get_payment.cdc         # Reads a payment by id
-│   ├── scripts/get_seller_earnings.cdc # Returns total seller earnings
-│   ├── transactions/create_payment.cdc # Seller creates a payment (id + price)
-│   ├── transactions/pay.cdc            # Buyer pays for a link
-│   ├── transactions/deactivate_payment.cdc
-│   └── tests/WalPay_test.cdc
-├── flow.json                           # Flow CLI configuration
-└── emulator-account.pkey               # Local dev account keys (example)
+smart-contract/
+├── contracts/LinkUp.sol
+├── scripts/deploy.ts                  # Deploys LinkUp + ReceiptNFT to Hedera JSON-RPC
+├── scripts/testCreatePayment.ts       # Tests createPayment on local Hardhat network
+├── hardhat.config.ts
+└── ...
 ```
 
 ## Prerequisites
-- Flow CLI (`brew install flow-cli` or see Flow docs)
-- Access to the platform treasury account that will receive fees (must expose `/public/flowTokenReceiver`)
-- The same platform fee percentage used by the backend (`PLATFORM_FEE_PERCENT`)
+- Node.js 20+
+- pnpm 8+
+- Hardhat (`pnpm dlx hardhat --help`)
 
 ## Configure accounts
 Update `flow.json` with your deployment and account keys:
@@ -48,15 +43,16 @@ The contract initializer takes two arguments:
 1. `platformTreasury (Address)` – receives platform fees (FlowToken receiver capability must exist).
 2. `platformFeeBps (UFix64)` – percentage fee (e.g. `2.0` for 2%). Keep this aligned with `PLATFORM_FEE_PERCENT`.
 
-## Running locally
+## Local Hardhat test
+Start a local Hardhat node:
 ```bash
-# Start emulator and deploy
-flow emulator start --http-port 8888 --rest-port 8889
-flow project deploy --network emulator
-
-# Run tests
-flow test
+pnpm dlx hardhat node
 ```
+In another terminal, run the scripted test:
+```bash
+pnpm --filter hedera-contract hardhat run scripts/testCreatePayment.ts --network localhost
+```
+This deploys LinkUp to the in-memory Hardhat network and calls `createPayment(...)` with a random slug so you can exercise contract logic without touching Hedera.
 
 ## Useful commands
 Create a payment (seller-signed):
@@ -101,10 +97,4 @@ flow scripts execute cadence/scripts/get_seller_earnings.cdc \
 - [WalPay architecture overview](../docs/architecture.md)
 
 
-Contract Details
-- Name: WalPay
-- Address (Deployed to): 0x7bcb95a415452d7d
-- Identifier: A.7bcb95a415452d7d.WalPay
-- TxHash - 84da5745b2d375bcd7ffe61d65d3df4915ec1b4cd20951984ec3ea20063a67cb
-
-- Link to contract deployed: https://testnet.flowscan.io/contract/A.7bcb95a415452d7d.WalPay
+Legacy Flow resources remain below for historical reference.

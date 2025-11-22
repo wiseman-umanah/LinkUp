@@ -17,5 +17,12 @@
     "hardhat": "^3.0.15",
     "mocha": "^11.7.5",
     "typescript": "~5.8.3"
+  },
+  "scripts": {
+    "hardhat": "hardhat",
+    "test-create": "tsx scripts/testCreatePayment.ts"
+  },
+  "dependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.2.3"
   }
 }

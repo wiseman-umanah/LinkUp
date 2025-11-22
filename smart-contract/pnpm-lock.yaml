@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@nomiclabs/hardhat-ethers':
+        specifier: ^2.2.3
+        version: 2.2.3(ethers@6.15.0)(hardhat@3.0.15)
     devDependencies:
       '@nomicfoundation/hardhat-ethers':
         specifier: ^4.0.3
@@ -454,6 +458,12 @@ packages:
   '@nomicfoundation/solidity-analyzer@0.1.2':
     resolution: {integrity: sha512-q4n32/FNKIhQ3zQGGw5CvPF6GTvDCpYwIf7bEY/dZTZbgfDsHyjJwURxUJf3VQuuJj+fDIFl4+KkBVbw4Ef6jA==}
     engines: {node: '>= 12'}
+
+  '@nomiclabs/hardhat-ethers@2.2.3':
+    resolution: {integrity: sha512-YhzPdzb612X591FOe68q+qXVXGG2ANZRvDo0RRUtimev85rCrAlv/TLMEZw5c+kq9AbzocLTVX/h2jVIFPL9Xg==}
+    peerDependencies:
+      ethers: ^5.0.0
+      hardhat: ^2.0.0
 
   '@openzeppelin/contracts@5.4.0':
     resolution: {integrity: sha512-eCYgWnLg6WO+X52I16TZt8uEjbtdkgLC0SUX/xnAksjjrQI4Xfn4iBRoI5j55dmlOhDv1Y7BoR3cU7e3WWhC6A==}
@@ -1675,6 +1685,11 @@ snapshots:
       '@nomicfoundation/solidity-analyzer-linux-x64-gnu': 0.1.2
       '@nomicfoundation/solidity-analyzer-linux-x64-musl': 0.1.2
       '@nomicfoundation/solidity-analyzer-win32-x64-msvc': 0.1.2
+
+  '@nomiclabs/hardhat-ethers@2.2.3(ethers@6.15.0)(hardhat@3.0.15)':
+    dependencies:
+      ethers: 6.15.0
+      hardhat: 3.0.15
 
   '@openzeppelin/contracts@5.4.0': {}
 

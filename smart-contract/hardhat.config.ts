@@ -1,10 +1,12 @@
 import type { HardhatUserConfig } from "hardhat/config";
+import hardhatEthers from "@nomicfoundation/hardhat-ethers";
+
 
 import hardhatToolboxMochaEthersPlugin from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
 import { configVariable } from "hardhat/config";
 
 const config: HardhatUserConfig = {
-  plugins: [hardhatToolboxMochaEthersPlugin],
+  plugins: [hardhatToolboxMochaEthersPlugin, hardhatEthers],
   solidity: {
     profiles: {
       default: {
@@ -26,6 +28,10 @@ const config: HardhatUserConfig = {
       type: "http",
       url: configVariable("HEDERA_RPC_URL"),
       accounts: [configVariable("HEDERA_PRIVATE_KEY")],
+    },
+    localhost: {
+      type: "http",
+      url: "http://127.0.0.1:8545",
     },
   },
 };
